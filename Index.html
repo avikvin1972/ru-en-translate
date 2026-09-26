@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Перевод RU → EN (голосом)</title>
+<style>
+:root{
+  --bg:#f5f6f8; --card:#fff; --text:#1a1a1a; --muted:#6b7280;
+  --accent:#4f46e5; --good:#16a34a; --bad:#dc2626; --border:#e5e7eb;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){ --bg:#15161a; --card:#1f2024; --text:#f1f1f1; --muted:#9ca3af; --border:#33343a; }
+}
+:root[data-theme="dark"]{ --bg:#15161a; --card:#1f2024; --text:#f1f1f1; --muted:#9ca3af; --border:#33343a; }
+*{box-sizing:border-box;}
+html,body{height:100%;}
+body{
+  margin:0; background:var(--bg); color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+  display:flex; justify-content:center; padding:20px 14px;
+}
+.card{ background:var(--card); border:1px solid var(--border); border-radius:16px; padding:20px; width:100%; max-width:480px; }
+h1{font-size:19px; margin:0 0 4px;}
+.sub{color:var(--muted); font-size:13px; margin:0 0 16px;}
+.tabs{display:flex; gap:6px; margin-bottom:16px;}
+.tab{
+  flex:1; padding:9px; text-align:center; font-size:13px; font-weight:600; border-radius:9px;
+  border:1px solid var(--border); background:var(--bg); color:var(--muted); cursor:pointer;
+}
+.tab.active{background:var(--accent); color:#fff; border-color:var(--accent);}
+.view{display:none;}
+.view.active{display:block;}
+
+.label{font-size:12px; color:var(--muted); margin-bottom:6px;}
+.ru-sentence{
+  font-size:18px; font-weight:600; background:var(--bg); border:1px solid var(--border);
+  border-radius:10px; padding:14px; margin-bottom:16px; line-height:1.4;
+}
+.mic-wrap{ display:flex; justify-content:center; margin:18px 0; }
+.mic-btn{
+  width:84px; height:84px; border-radius:50%; border:none; background:var(--accent); color:#fff;
+  font-size:32px; cursor:pointer; display:flex; align-items:center; justify-content:center;
+}
+.mic-btn.listening{ background:var(--bad); animation:pulse 1s infinite; }
+@keyframes pulse{ 0%{transform:scale(1);} 50%{transform:scale(1.08);} 100%{transform:scale(1);} }
+.status{ text-align:center; font-size:13px; color:var(--muted); min-height:18px; margin-bottom:8px; }
+.heard{ background:var(--bg); border:1px solid var(--border); border-radius:10px; padding:10px 12px; font-size:14px; margin-bottom:12px; display:none; }
+.heard.show{display:block;}
+.feedback{ margin-top:6px; padding:12px; border-radius:10px; font-size:14px; display:none; }
+.feedback.show{display:block;}
+.feedback.good{background:rgba(22,163,74,0.12); color:var(--good);}
+.feedback.bad{background:rgba(220,38,38,0.12); color:var(--bad);}
+.correct-answer{margin-top:6px; font-weight:600; white-space:pre-line;}
+.row{display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;}
+button.secondary{
+  flex:1; min-width:100px; padding:11px; font-size:14px; font-weight:600;
+  border:none; border-radius:10px; cursor:pointer; background:var(--border); color:var(--text);
+}
+.progress{font-size:12px; color:var(--muted); margin-top:14px; text-align:right;}
+.unsupported{ color:var(--bad); font-size:13px; text-align:center; }
+
+input[type=text], textarea{
+  width:100%; padding:11px; font-size:14px; border-radius:9px;
+  border:1px solid var(--border); background:var(--bg); color:var(--text); margin-bottom:8px;
+  font-family:inherit;
+}
+textarea{resize:vertical; min-height:70px;}
+.hint{font-size:11px; color:var(--muted); margin:-4px 0 10px;}
+.btn-primary{
+  width:100%; padding:12px; font-size:14px; font-weight:600; border:none;
+  border-radius:10px; cursor:pointer; background:var(--accent); color:#fff; margin-bottom:16px;
+}
+.list-item{
+  border:1px solid var(--border); border-radius:10px; padding:10px 12px; margin-bottom:8px;
+  font-size:13px; display:flex; justify-content:space-between; align-items:flex-start; gap:8px;
+}
+.list-item .txt{flex:1;}
+.list-item .ru-part{font-weight:600; margin-bottom:2px;}
+.list-item .en-part{color:var(--muted);}
+.del-btn{
+  border:none; background:none; color:var(--bad); font-size:18px; cursor:pointer; padding:2px 6px;
+}
+.empty-note{color:var(--muted); font-size:13px; text-align:center; padding:12px 0;}
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>🇷🇺 → 🇬🇧 Скажи перевод</h1>
+  <p class="sub">Прочитай предложение и произнеси его перевод на английском вслух</p>
+
+  <div class="tabs">
+    <div class="tab" id="tabPractice">Тренировка</div>
+    <div class="tab active" id="tabManage">Свои предложения</div>
+  </div>
+
+  <!-- PRACTICE VIEW -->
+  <div class="view" id="viewPractice">
+    <div class="label">Предложение на русском:</div>
+    <div class="ru-sentence" id="ruText"></div>
+
+    <div class="mic-wrap">
+      <button class="mic-btn" id="micBtn">🎤</button>
+    </div>
+    <div class="status" id="status">Нажми на микрофон и произнеси перевод</div>
+
+    <div class="heard" id="heard"></div>
+
+    <div class="feedback" id="feedback">
+      <div id="feedbackText"></div>
+      <div class="correct-answer" id="correctAnswer"></div>
+    </div>
+
+    <div class="row">
+      <button class="secondary" id="replayBtn">🔊 Как правильно</button>
+      <button class="secondary" id="nextBtn">Следующее →</button>
+    </div>
+
+    <div class="progress" id="progress"></div>
+  </div>
+
+  <!-- MANAGE VIEW -->
+  <div class="view active" id="viewManage">
+    <div class="label">Предложение на русском</div>
+    <input type="text" id="newRu" placeholder="Например: Я иду домой.">
+
+    <div class="label">Варианты перевода на английский</div>
+    <textarea id="newEn" placeholder="Один вариант на строке, например:&#10;I am going home.&#10;I'm heading home."></textarea>
+    <div class="hint">Можно указать несколько правильных вариантов — каждый с новой строки.</div>
+
+    <button class="btn-primary" id="addBtn">+ Добавить предложение</button>
+
+    <div class="label">Твои добавленные предложения:</div>
+    <div id="customList"></div>
+  </div>
+</div>
+
+<script>
+const builtIn = [];
+
+const STORAGE_KEY = 'ruEnCustomSentences';
+
+function loadCustom(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  }catch(e){ return []; }
+}
+function saveCustom(list){
+  try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(list)); }
+  catch(e){ console.error('Storage unavailable', e); }
+}
+
+let custom = loadCustom();
+let data = builtIn.concat(custom);
+let order = [];
+let pos = 0;
+
+function shuffle(){
+  order = [...Array(data.length).keys()];
+  for(let i=order.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[order[i],order[j]]=[order[j],order[i]];}
+  pos = 0;
+}
+
+const ruText = document.getElementById('ruText');
+const micBtn = document.getElementById('micBtn');
+const statusEl = document.getElementById('status');
+const heard = document.getElementById('heard');
+const feedback = document.getElementById('feedback');
+const feedbackText = document.getElementById('feedbackText');
+const correctAnswer = document.getElementById('correctAnswer');
+const progress = document.getElementById('progress');
+
+function normalize(s){
+  return s.toLowerCase().replace(/[.,!?;:'"«»\-]/g,'').replace(/\s+/g,' ').trim();
+}
+function levenshtein(a,b){
+  const m=a.length,n=b.length;
+  const dp=Array.from({length:m+1},()=>new Array(n+1).fill(0));
+  for(let i=0;i<=m;i++)dp[i][0]=i;
+  for(let j=0;j<=n;j++)dp[0][j]=j;
+  for(let i=1;i<=m;i++)for(let j=1;j<=n;j++){
+    dp[i][j]=a[i-1]===b[j-1]?dp[i-1][j-1]:1+Math.min(dp[i-1][j],dp[i][j-1],dp[i-1][j-1]);
+  }
+  return dp[m][n];
+}
+function isCloseEnough(said, correct){
+  const a=normalize(said), b=normalize(correct);
+  if(a===b) return true;
+  const dist=levenshtein(a,b);
+  return dist <= Math.max(2, Math.round(b.length*0.15));
+}
+function matchesAny(said, variants){
+  return variants.some(v => isCloseEnough(said, v));
+}
+
+function loadSentence(){
+  if(data.length === 0){
+    ruText.textContent = 'Нет предложений. Добавь их во вкладке "Свои предложения".';
+    micBtn.disabled = true;
+    progress.textContent = '';
+    return;
+  }
+  micBtn.disabled = false;
+  const item = data[order[pos]];
+  ruText.textContent = item.ru;
+  heard.className = 'heard';
+  feedback.className = 'feedback';
+  statusEl.textContent = 'Нажми на микрофон и произнеси перевод';
+  progress.textContent = `${pos+1} / ${data.length}`;
+}
+
+function speakEnglish(text){
+  try{
+    window.speechSynthesis.cancel();
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.lang = 'en-US';
+    utter.rate = 0.95;
+    window.speechSynthesis.speak(utter);
+  }catch(e){ console.error('Speech synthesis unavailable', e); }
+}
+
+const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
+let recognition = null;
+let listening = false;
+
+if(!SpeechRecognitionAPI){
+  micBtn.disabled = true;
+  statusEl.innerHTML = '<span class="unsupported">Этот браузер не поддерживает распознавание речи. Попробуй Chrome.</span>';
+} else {
+  recognition = new SpeechRecognitionAPI();
+  recognition.lang = 'en-US';
+  recognition.interimResults = false;
+  recognition.maxAlternatives = 1;
+
+  recognition.onstart = ()=>{
+    listening = true;
+    micBtn.classList.add('listening');
+    statusEl.textContent = 'Слушаю... говори перевод';
+  };
+  recognition.onresult = (event)=>{
+    const said = event.results[0][0].transcript;
+    const item = data[order[pos]];
+    heard.className = 'heard show';
+    heard.textContent = 'Услышано: "' + said + '"';
+    const ok = matchesAny(said, item.en);
+    feedback.className = 'feedback show ' + (ok ? 'good' : 'bad');
+    feedbackText.textContent = ok ? '✅ Верно!' : '❌ Не совсем так.';
+    correctAnswer.textContent = 'Правильн' + (item.en.length>1?'ые варианты':'ый перевод') + ':\n' + item.en.join('\n');
+  };
+  recognition.onerror = (event)=>{
+    statusEl.textContent = 'Ошибка распознавания: ' + event.error + '. Попробуй ещё раз.';
+  };
+  recognition.onend = ()=>{
+    listening = false;
+    micBtn.classList.remove('listening');
+    if(statusEl.textContent === 'Слушаю... говори перевод'){
+      statusEl.textContent = 'Нажми на микрофон и произнеси перевод';
+    }
+  };
+  micBtn.addEventListener('click', ()=>{
+    if(data.length === 0) return;
+    if(listening){ recognition.stop(); return; }
+    heard.className = 'heard';
+    feedback.className = 'feedback';
+    try{ recognition.start(); }
+    catch(e){ statusEl.textContent = 'Не удалось запустить микрофон.'; }
+  });
+}
+
+document.getElementById('replayBtn').addEventListener('click', ()=>{
+  if(data.length === 0) return;
+  speakEnglish(data[order[pos]].en[0]);
+});
+document.getElementById('nextBtn').addEventListener('click', ()=>{
+  if(data.length === 0) return;
+  pos = (pos + 1) % data.length;
+  loadSentence();
+});
+
+// --- Tabs ---
+const tabPractice = document.getElementById('tabPractice');
+const tabManage = document.getElementById('tabManage');
+const viewPractice = document.getElementById('viewPractice');
+const viewManage = document.getElementById('viewManage');
+
+tabPractice.addEventListener('click', ()=>{
+  tabPractice.classList.add('active'); tabManage.classList.remove('active');
+  viewPractice.classList.add('active'); viewManage.classList.remove('active');
+});
+tabManage.addEventListener('click', ()=>{
+  tabManage.classList.add('active'); tabPractice.classList.remove('active');
+  viewManage.classList.add('active'); viewPractice.classList.remove('active');
+  renderCustomList();
+});
+
+// --- Manage view ---
+const newRu = document.getElementById('newRu');
+const newEn = document.getElementById('newEn');
+const customList = document.getElementById('customList');
+
+function renderCustomList(){
+  customList.innerHTML = '';
+  if(custom.length === 0){
+    customList.innerHTML = '<div class="empty-note">Пока ничего не добавлено.</div>';
+    return;
+  }
+  custom.forEach((item, idx)=>{
+    const div = document.createElement('div');
+    div.className = 'list-item';
+    const txt = document.createElement('div');
+    txt.className = 'txt';
+    const ruP = document.createElement('div');
+    ruP.className = 'ru-part';
+    ruP.textContent = item.ru;
+    const enP = document.createElement('div');
+    enP.className = 'en-part';
+    enP.textContent = item.en.join(' / ');
+    txt.appendChild(ruP); txt.appendChild(enP);
+    const del = document.createElement('button');
+    del.className = 'del-btn';
+    del.textContent = '✕';
+    del.addEventListener('click', ()=>{
+      custom.splice(idx,1);
+      saveCustom(custom);
+      data = builtIn.concat(custom);
+      shuffle();
+      loadSentence();
+      renderCustomList();
+    });
+    div.appendChild(txt); div.appendChild(del);
+    customList.appendChild(div);
+  });
+}
+
+document.getElementById('addBtn').addEventListener('click', ()=>{
+  const ru = newRu.value.trim();
+  const enLines = newEn.value.split('\n').map(s=>s.trim()).filter(Boolean);
+  if(!ru || enLines.length === 0){
+    alert('Заполни и русское предложение, и хотя бы один вариант перевода.');
+    return;
+  }
+  custom.push({ru, en: enLines});
+  saveCustom(custom);
+  data = builtIn.concat(custom);
+  shuffle();
+  loadSentence();
+  newRu.value = '';
+  newEn.value = '';
+  renderCustomList();
+});
+
+shuffle();
+loadSentence();
+renderCustomList();
+</script>
+</body>
+</html>
